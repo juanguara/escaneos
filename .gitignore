@@ -1,0 +1,46 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Runtime outputs and heavy folders
+salida/
+salida_pdf/
+salida_pdf_only/
+fallados/
+fallados_pdf/
+fallados_pdf_only/
+escaneados_pdf_only/
+
+# Local source material / bulk scans
+escaneados/
+
+# Temp and debug artifacts
+tmp_*/
+
+# Logs
+*.log

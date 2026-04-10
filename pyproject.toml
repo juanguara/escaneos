@@ -1,0 +1,33 @@
+[project]
+name = "scan-indexer"
+version = "0.1.0"
+description = "MVP local para indexar documentos escaneados con barcodes y texto manuscrito."
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn>=0.35.0",
+  "opencv-python-headless>=4.10.0.84",
+  "openai>=1.109.0",
+  "openpyxl>=3.1.5",
+  "pandas>=2.2.3",
+  "Pillow>=11.1.0",
+  "psycopg[binary]>=3.2.1",
+  "pypdfium2>=4.30.0",
+  "python-dotenv>=1.0.1",
+  "pydantic>=2.10.6",
+  "rich>=14.0.0",
+]
+
+[project.scripts]
+scan-indexer = "scan_indexer.cli:main"
+scan-indexer-review = "scan_indexer.review_app:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
