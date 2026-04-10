@@ -5,7 +5,8 @@
 - Windows 10 u 11
 - Python 3.10 o superior
 - Acceso a internet para instalar dependencias
-- Una API key de OpenAI guardada para el uso de IA
+- Una API key de OpenAI si se quiere usar IA
+- Credenciales de PostgreSQL si se quiere validar o impactar en base
 
 ## 1. Instalar Python
 
@@ -59,16 +60,24 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
-## 5. Configurar La API Key
+## 5. Configurar `.env`
 
 1. En la raiz del proyecto, crear un archivo llamado `.env`
-2. Agregar una linea con la clave:
+2. Agregar las credenciales necesarias:
 
 ```env
 OPENAI_API_KEY=tu_api_key_real
+PPOSTAL_DB_HOST=200.58.127.105
+PPOSTAL_DB_PORT=5432
+PPOSTAL_DB_NAME=ppostal
+PPOSTAL_DB_USER=postgres
+PPOSTAL_DB_PASSWORD=tu_password_postgres
 ```
 
-Si no se quiere usar IA por el momento, la app igual puede correr sin la clave, pero los campos manuscritos van a quedar vacios.
+Notas:
+
+- Si no se quiere usar IA, la app puede correr sin `OPENAI_API_KEY`, pero los campos manuscritos pueden quedar vacios o incompletos.
+- Si no se quiere validar o actualizar la base, se puede omitir la password de PostgreSQL.
 
 ## 6. Preparar Carpetas
 
@@ -78,61 +87,198 @@ Crear o copiar estas carpetas:
 - `salida`
 - `fallados`
 
-`escaneados` debe contener las imagenes a procesar.
+`escaneados` puede contener:
 
-Tambien puede contener archivos PDF multipagina. En ese caso la app procesa una pagina por documento.
+- imagenes sueltas
+- PDFs multipagina
 
-## 7. Ejecutar La App
+En el caso de PDFs, la app procesa una pagina por documento.
 
-Desde la raiz del proyecto, con el entorno virtual activado:
+## 7. Comandos Principales
+
+### 7.1 Procesar Documentos
+
+Comando:
 
 ```powershell
 scan-indexer --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --model gpt-5.4-mini --copy-originals --verbose
 ```
 
-Si el comando `scan-indexer` no funciona, usar:
+Significado:
+
+- `--input-dir`
+  Carpeta de entrada con imagenes o PDFs.
+- `--output-dir`
+  Carpeta raiz donde se guarda cada corrida en una subcarpeta nueva.
+- `--failed-dir`
+  Carpeta donde se copian los documentos que fallan.
+- `--model`
+  Modelo de OpenAI usado para reconocimiento manuscrito.
+- `--copy-originals`
+  Copia a la carpeta de salida los documentos procesados con nombre `barcode_1`.
+- `--verbose`
+  Muestra mas detalle en consola.
+
+### 7.2 Procesar Sin IA
+
+Comando:
 
 ```powershell
-python -m scan_indexer.cli --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --model gpt-5.4-mini --copy-originals --verbose
+scan-indexer --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --skip-ai --verbose
 ```
 
-## 8. Archivos De Salida
+Significado:
 
-Al terminar, la app genera:
+- `--skip-ai`
+  Omite la parte de IA. Solo intenta extraer barcodes y datos locales.
 
-- `salida\results.json`
-- `salida\results.xlsx`
+### 7.3 Procesar Sin Validar Base
 
-Ahora cada corrida queda dentro de una subcarpeta nueva en `salida`, por ejemplo:
+Comando:
 
-- `salida\2026-04-09_001\results.json`
-- `salida\2026-04-09_001\results.xlsx`
+```powershell
+scan-indexer --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --skip-db-check --verbose
+```
 
-Si se procesan PDFs, cada pagina queda como un registro separado con su numero de pagina.
+Significado:
 
-Y copia a:
+- `--skip-db-check`
+  No consulta PostgreSQL para validar `barcode_1`.
 
-- `salida\` los archivos procesados correctamente si se uso `--copy-originals`
-- `fallados\` los archivos con error de procesamiento
+### 7.4 Simular El Impacto En La Base
 
-## 8.1 Reprocesar Solo El `results.json`
+Comando:
 
-Si ya existe `salida\results.json` y queres rehacer solamente la parte de base de datos, sin volver a leer documentos:
+```powershell
+scan-indexer --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --model gpt-5.4-mini --copy-originals --dry-run-db-updates --verbose
+```
+
+Significado:
+
+- `--dry-run-db-updates`
+  No escribe en la base. Genera un archivo `db_dry_run.json` con las transacciones que ejecutaria.
+
+### 7.5 Impactar La Base De Datos
+
+Comando:
+
+```powershell
+scan-indexer --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --model gpt-5.4-mini --copy-originals --apply-db-updates --verbose
+```
+
+Significado:
+
+- `--apply-db-updates`
+  Actualiza realmente `purchase_order_status` y `order_tracking` en PostgreSQL para los documentos validos.
+
+### 7.6 Reprocesar Solo El `results.json`
+
+Comando:
 
 ```powershell
 scan-indexer --output-dir .\salida --failed-dir .\fallados --results-json-only --dry-run-db-updates --verbose
 ```
 
-O para aplicar updates reales:
+O para impacto real:
 
 ```powershell
 scan-indexer --output-dir .\salida --failed-dir .\fallados --results-json-only --apply-db-updates --verbose
 ```
 
-En este modo no hace OCR ni reprocesa PDFs o imagenes.
-Toma el `results.json` más reciente dentro de `salida`.
+Significado:
 
-## 9. Problemas Comunes
+- `--results-json-only`
+  No relee documentos. Reutiliza el `results.json` mas reciente dentro de `salida`.
+
+Este modo sirve para:
+
+- volver a generar `results.xlsx`
+- rehacer una simulacion
+- impactar en base luego de revisar o corregir resultados
+
+## 8. App Web De Revision
+
+La app web local permite:
+
+- elegir que carpeta de salida revisar
+- ver la imagen completa del documento
+- editar `BP`, `aclaracion`, `documento`, `fecha_entrega` y `vinculo`
+- guardar automaticamente al navegar
+- impactar un registro o todos los revisados
+
+### 8.1 Levantar El Webserver
+
+Comando:
+
+```powershell
+scan-indexer-review --output-dir .\salida
+```
+
+Opcionalmente se puede cambiar host o puerto:
+
+```powershell
+scan-indexer-review --output-dir .\salida --host 127.0.0.1 --port 8765
+```
+
+Significado:
+
+- `--output-dir`
+  Carpeta raiz donde estan las corridas para revisar.
+- `--host`
+  Direccion local donde escucha la app web.
+- `--port`
+  Puerto local de la app web.
+
+### 8.2 Abrir La App Web
+
+Una vez levantado el servidor, abrir en el navegador:
+
+```text
+http://127.0.0.1:8765
+```
+
+### 8.3 Flujo Recomendado
+
+1. Correr extracción sin impacto real, por ejemplo con `--dry-run-db-updates`
+2. Abrir la app web
+3. Elegir la carpeta de salida a revisar
+4. Corregir los campos necesarios
+5. Guardar o navegar
+   La app guarda automaticamente si se usa `Anterior` o `Siguiente`
+6. Impactar cada registro o todos los revisados
+
+## 9. Archivos De Salida
+
+Cada corrida se guarda dentro de una subcarpeta nueva en `salida`, por ejemplo:
+
+- `salida\2026-04-10_001\results.json`
+- `salida\2026-04-10_001\results.xlsx`
+- `salida\2026-04-10_001\db_dry_run.json`
+
+Si se usa `--copy-originals`, tambien quedan dentro de esa misma carpeta:
+
+- las imagenes procesadas correctamente
+- renombradas con `barcode_1`
+
+En `fallados\` quedan los documentos que no pudieron procesarse correctamente.
+
+## 10. Si `scan-indexer` O `scan-indexer-review` No Funcionan
+
+Usar estos comandos alternativos:
+
+```powershell
+python .\src\scan_indexer\pipeline.py --help
+python .\src\scan_indexer\review_app.py --help
+```
+
+O bien:
+
+```powershell
+python -m scan_indexer.cli --input-dir .\escaneados --output-dir .\salida --failed-dir .\fallados --verbose
+python -m scan_indexer.review_app --output-dir .\salida
+```
+
+## 11. Problemas Comunes
 
 ### Python no se reconoce
 
@@ -163,11 +309,18 @@ Sin API key o sin credito, el sistema puede seguir con la parte local:
 
 Pero los campos manuscritos pueden quedar vacios o incompletos.
 
-## 10. Recomendacion Para Produccion
+### Error al reprocesar desde `fallados`
+
+Si se usa `fallados` como entrada y un archivo vuelve a fallar, la app ahora evita el choque de nombres agregando sufijos tipo:
+
+- `archivo__retry1.jpg`
+- `archivo__retry2.jpg`
+
+## 12. Recomendacion Para Produccion
 
 En la version final con escaneos, conviene:
 
 - usar archivos escaneados rectos
 - mantener siempre el mismo formato de hoja
 - separar una carpeta para pruebas
-- validar los primeros lotes revisando `results.json` y `results.xlsx`
+- revisar los primeros lotes desde la app web antes de impactar en base
