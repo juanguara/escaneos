@@ -439,8 +439,23 @@ def extract_primary_barcode(top_right: Image.Image, values: Sequence[str]) -> Op
     if primary:
         return primary
 
+    for region in primary_barcode_text_regions(top_right):
+        ocr_text = ocr_primary_barcode_text(region)
+        primary = extract_pst_from_text(ocr_text)
+        if primary:
+            return primary
+
     ocr_text = ocr_image_text(top_right)
     return extract_pst_from_text(ocr_text)
+
+
+def primary_barcode_text_regions(top_right: Image.Image) -> List[Image.Image]:
+    width, height = top_right.size
+    return [
+        top_right,
+        top_right.crop((int(width * 0.40), 0, width, int(height * 0.25))),
+        top_right.crop((int(width * 0.42), int(height * 0.18), width, int(height * 0.42))),
+    ]
 
 
 def extract_secondary_barcode(bottom_right: Image.Image, values: Sequence[str], exclude: Optional[str]) -> Optional[str]:
@@ -534,7 +549,19 @@ def ocr_image_text(image: Image.Image) -> str:
         temp_path.unlink(missing_ok=True)
 
 
-def ocr_image_text_with_tesseract(image: Image.Image) -> str:
+def ocr_primary_barcode_text(image: Image.Image) -> str:
+    return ocr_image_text_with_tesseract(
+        image,
+        psm="7",
+        whitelist="PST0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    )
+
+
+def ocr_image_text_with_tesseract(
+    image: Image.Image,
+    psm: str = "6",
+    whitelist: Optional[str] = None,
+) -> str:
     tesseract_path = shutil.which("tesseract")
     if not tesseract_path:
         return ""
@@ -544,8 +571,11 @@ def ocr_image_text_with_tesseract(image: Image.Image) -> str:
 
     try:
         image.save(temp_path, format="PNG")
+        command = [tesseract_path, str(temp_path), "stdout", "--psm", psm]
+        if whitelist:
+            command.extend(["-c", f"tessedit_char_whitelist={whitelist}"])
         completed = subprocess.run(
-            [tesseract_path, str(temp_path), "stdout", "--psm", "6"],
+            command,
             check=False,
             capture_output=True,
             text=True,
@@ -560,6 +590,9 @@ def ocr_image_text_with_tesseract(image: Image.Image) -> str:
 
 def extract_pst_from_text(text: str) -> Optional[str]:
     normalized = normalize_ocr_text(text)
+    normalized = normalized.replace("PS7", "PST")
+    normalized = normalized.replace("P57", "PST")
+    normalized = normalized.replace("PT", "PST")
     match = re.search(r"PST(\d{8})", normalized)
     if match:
         return f"PST{match.group(1)}"
