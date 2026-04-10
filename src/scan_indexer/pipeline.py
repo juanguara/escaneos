@@ -578,14 +578,26 @@ def ocr_image_text_with_tesseract(
             command,
             check=False,
             capture_output=True,
-            text=True,
+            text=False,
         )
         if completed.returncode != 0:
-            LOGGER.debug("Tesseract OCR fallo: %s", completed.stderr.strip())
+            stderr_text = decode_subprocess_output(completed.stderr)
+            LOGGER.debug("Tesseract OCR fallo: %s", stderr_text.strip())
             return ""
-        return completed.stdout.strip()
+        return decode_subprocess_output(completed.stdout).strip()
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def decode_subprocess_output(data: Optional[bytes]) -> str:
+    if not data:
+        return ""
+    for encoding in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="ignore")
 
 
 def extract_pst_from_text(text: str) -> Optional[str]:
