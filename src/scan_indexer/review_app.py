@@ -159,11 +159,14 @@ HTML_PAGE = """<!doctype html>
     .topbar button.secondary, .editor button.secondary { background:#857868; }
     .topbar button:disabled, .editor button:disabled { opacity:.5; cursor:not-allowed; }
     .layout { display:grid; grid-template-columns: 1.4fr .9fr; gap:18px; margin-top:18px; }
-    .viewerStack { display:flex; flex-direction:column; gap:14px; }
     .viewer { background:#fff; border:1px solid var(--line); border-radius:18px; padding:14px; min-height:52vh; display:flex; align-items:center; justify-content:center; }
     .viewer img { width:100%; height:auto; border-radius:12px; object-fit:contain; }
+    .bottomTools { margin-top:18px; }
     .zoomPanel { background:#fff; border:1px solid var(--line); border-radius:18px; padding:14px; }
     .zoomHeader { display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; }
+    .zoomControls { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-bottom:10px; }
+    .zoomControls label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted); }
+    .zoomControls input[type="range"] { width:100%; }
     .zoomCanvas { height:240px; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#f7f3eb center 78% / 160% no-repeat; }
     .editor { padding:18px; display:flex; flex-direction:column; gap:14px; }
     .meta { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; font-size:14px; }
@@ -195,18 +198,7 @@ HTML_PAGE = """<!doctype html>
       <div id="summaryText"></div>
     </div>
     <div class="layout">
-      <div class="viewerStack">
-        <div class="viewer"><img id="docImage" alt="Documento"></div>
-        <div class="zoomPanel">
-          <div class="zoomHeader">
-            <strong>Zoom Manuscrita</strong>
-            <label for="zoomRange">Aumento</label>
-            <input id="zoomRange" type="range" min="100" max="260" step="10" value="160">
-            <span id="zoomValue">160%</span>
-          </div>
-          <div id="zoomCanvas" class="zoomCanvas"></div>
-        </div>
-      </div>
+      <div class="viewer"><img id="docImage" alt="Documento"></div>
       <div class="editor">
         <div class="meta">
           <div><strong>Archivo:</strong> <span id="metaArchivo"></span></div>
@@ -244,6 +236,28 @@ HTML_PAGE = """<!doctype html>
         <div class="status" id="statusText"></div>
       </div>
     </div>
+    <div class="bottomTools">
+      <div class="zoomPanel">
+        <div class="zoomHeader">
+          <strong>Zoom Manuscrita</strong>
+        </div>
+        <div class="zoomControls">
+          <label for="zoomRange">Aumento
+            <input id="zoomRange" type="range" min="100" max="260" step="10" value="160">
+            <span id="zoomValue">160%</span>
+          </label>
+          <label for="zoomXRange">Centro horizontal
+            <input id="zoomXRange" type="range" min="0" max="100" step="1" value="50">
+            <span id="zoomXValue">50%</span>
+          </label>
+          <label for="zoomYRange">Centro vertical
+            <input id="zoomYRange" type="range" min="0" max="100" step="1" value="78">
+            <span id="zoomYValue">78%</span>
+          </label>
+        </div>
+        <div id="zoomCanvas" class="zoomCanvas"></div>
+      </div>
+    </div>
   </div>
   <script>
     const state = { run: null, index: 0, total: 0, dirty: false };
@@ -262,11 +276,16 @@ HTML_PAGE = """<!doctype html>
 
     function updateZoomPanel() {
       const zoom = document.getElementById("zoomRange").value;
+      const zoomX = document.getElementById("zoomXRange").value;
+      const zoomY = document.getElementById("zoomYRange").value;
       const imageUrl = document.getElementById("docImage").src;
       document.getElementById("zoomValue").textContent = zoom + "%";
+      document.getElementById("zoomXValue").textContent = zoomX + "%";
+      document.getElementById("zoomYValue").textContent = zoomY + "%";
       const zoomCanvas = document.getElementById("zoomCanvas");
       zoomCanvas.style.backgroundImage = imageUrl ? `url("${imageUrl}")` : "none";
       zoomCanvas.style.backgroundSize = zoom + "%";
+      zoomCanvas.style.backgroundPosition = `${zoomX}% ${zoomY}%`;
     }
 
     function markDirty() {
@@ -392,6 +411,8 @@ HTML_PAGE = """<!doctype html>
 
     document.getElementById("refreshRuns").addEventListener("click", loadRuns);
     document.getElementById("zoomRange").addEventListener("input", updateZoomPanel);
+    document.getElementById("zoomXRange").addEventListener("input", updateZoomPanel);
+    document.getElementById("zoomYRange").addEventListener("input", updateZoomPanel);
     document.getElementById("runSelect").addEventListener("change", async (event) => {
       await maybeSave();
       await loadRecord(event.target.value, 0);
