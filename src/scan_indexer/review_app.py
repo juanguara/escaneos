@@ -27,6 +27,7 @@ import psycopg
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aplicacion local para revision visual de resultados.")
     parser.add_argument("--output-dir", required=True, type=Path, help="Carpeta raiz de salidas.")
+    parser.add_argument("--failed-dir", default=Path("fallados"), type=Path, help="Carpeta de fallados para buscar imagenes.")
     parser.add_argument("--host", default="127.0.0.1", help="Host para la app web local.")
     parser.add_argument("--port", default=8765, type=int, help="Puerto para la app web local.")
     return parser.parse_args()
@@ -57,13 +58,17 @@ def save_run_records(run_dir: Path, records: List[DocumentResult]) -> None:
     write_outputs(run_dir, records, planned_operations=None)
 
 
-def resolve_image_path(run_dir: Path, record: DocumentResult) -> Optional[Path]:
+def resolve_image_path(run_dir: Path, record: DocumentResult, failed_dir: Optional[Path] = None) -> Optional[Path]:
     candidates: List[Path] = []
     if record.barcode_1:
         for extension in (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"):
             candidates.append(run_dir / f"{record.barcode_1}{extension}")
+            if failed_dir is not None:
+                candidates.append(failed_dir / f"{record.barcode_1}{extension}")
     if record.archivo:
         candidates.append(run_dir / record.archivo)
+        if failed_dir is not None:
+            candidates.append(failed_dir / record.archivo)
 
     for candidate in candidates:
         if candidate.exists():
@@ -83,12 +88,12 @@ def run_summary(run_dir: Path, records: List[DocumentResult]) -> Dict[str, Any]:
     }
 
 
-def record_payload(run_dir: Path, records: List[DocumentResult], index: int) -> Dict[str, Any]:
+def record_payload(run_dir: Path, records: List[DocumentResult], index: int, failed_dir: Optional[Path] = None) -> Dict[str, Any]:
     if index < 0 or index >= len(records):
         raise HTTPException(status_code=404, detail="Registro fuera de rango.")
 
     record = records[index]
-    image_path = resolve_image_path(run_dir, record)
+    image_path = resolve_image_path(run_dir, record, failed_dir)
     return {
         "index": index,
         "total": len(records),
@@ -154,8 +159,12 @@ HTML_PAGE = """<!doctype html>
     .topbar button.secondary, .editor button.secondary { background:#857868; }
     .topbar button:disabled, .editor button:disabled { opacity:.5; cursor:not-allowed; }
     .layout { display:grid; grid-template-columns: 1.4fr .9fr; gap:18px; margin-top:18px; }
-    .viewer { background:#fff; border:1px solid var(--line); border-radius:18px; padding:14px; min-height:70vh; display:flex; align-items:center; justify-content:center; }
+    .viewerStack { display:flex; flex-direction:column; gap:14px; }
+    .viewer { background:#fff; border:1px solid var(--line); border-radius:18px; padding:14px; min-height:52vh; display:flex; align-items:center; justify-content:center; }
     .viewer img { width:100%; height:auto; border-radius:12px; object-fit:contain; }
+    .zoomPanel { background:#fff; border:1px solid var(--line); border-radius:18px; padding:14px; }
+    .zoomHeader { display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; }
+    .zoomCanvas { height:240px; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#f7f3eb center 78% / 160% no-repeat; }
     .editor { padding:18px; display:flex; flex-direction:column; gap:14px; }
     .meta { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; font-size:14px; }
     .meta div { padding:10px 12px; background:#faf6ef; border-radius:12px; }
@@ -177,7 +186,7 @@ HTML_PAGE = """<!doctype html>
       <div>
         <label>Impacto en DB</label>
         <div class="checkline">
-          <input id="applyOnSave" type="checkbox">
+          <input id="applyOnSave" type="checkbox" checked>
           <span>Impactar al guardar y navegar</span>
         </div>
       </div>
@@ -186,7 +195,18 @@ HTML_PAGE = """<!doctype html>
       <div id="summaryText"></div>
     </div>
     <div class="layout">
-      <div class="viewer"><img id="docImage" alt="Documento"></div>
+      <div class="viewerStack">
+        <div class="viewer"><img id="docImage" alt="Documento"></div>
+        <div class="zoomPanel">
+          <div class="zoomHeader">
+            <strong>Zoom Manuscrita</strong>
+            <label for="zoomRange">Aumento</label>
+            <input id="zoomRange" type="range" min="100" max="260" step="10" value="160">
+            <span id="zoomValue">160%</span>
+          </div>
+          <div id="zoomCanvas" class="zoomCanvas"></div>
+        </div>
+      </div>
       <div class="editor">
         <div class="meta">
           <div><strong>Archivo:</strong> <span id="metaArchivo"></span></div>
@@ -240,6 +260,15 @@ HTML_PAGE = """<!doctype html>
       document.getElementById("statusText").textContent = message || "";
     }
 
+    function updateZoomPanel() {
+      const zoom = document.getElementById("zoomRange").value;
+      const imageUrl = document.getElementById("docImage").src;
+      document.getElementById("zoomValue").textContent = zoom + "%";
+      const zoomCanvas = document.getElementById("zoomCanvas");
+      zoomCanvas.style.backgroundImage = imageUrl ? `url("${imageUrl}")` : "none";
+      zoomCanvas.style.backgroundSize = zoom + "%";
+    }
+
     function markDirty() {
       state.dirty = true;
       document.getElementById("saveBtn").disabled = false;
@@ -269,6 +298,7 @@ HTML_PAGE = """<!doctype html>
       state.index = data.index;
       state.total = data.total;
       document.getElementById("docImage").src = data.image_url || "";
+      updateZoomPanel();
       document.getElementById("metaArchivo").textContent = record.archivo + (record.pagina ? " pag " + record.pagina : "");
       document.getElementById("metaPos").textContent = (data.index + 1) + " / " + data.total;
       document.getElementById("metaBarcode1").textContent = record.barcode_1 || "";
@@ -361,6 +391,7 @@ HTML_PAGE = """<!doctype html>
     }
 
     document.getElementById("refreshRuns").addEventListener("click", loadRuns);
+    document.getElementById("zoomRange").addEventListener("input", updateZoomPanel);
     document.getElementById("runSelect").addEventListener("change", async (event) => {
       await maybeSave();
       await loadRecord(event.target.value, 0);
@@ -393,7 +424,7 @@ HTML_PAGE = """<!doctype html>
 """.replace("__VINCULOS__", ", ".join(json.dumps(item) for item in VALID_VINCULOS))
 
 
-def build_app(output_dir: Path) -> FastAPI:
+def build_app(output_dir: Path, failed_dir: Optional[Path] = None) -> FastAPI:
     app = FastAPI(title="Scan Indexer Review")
 
     @app.get("/", response_class=HTMLResponse)
@@ -414,7 +445,7 @@ def build_app(output_dir: Path) -> FastAPI:
         if not run_dir.exists():
             raise HTTPException(status_code=404, detail="No existe la carpeta seleccionada.")
         records = load_run_records(run_dir)
-        return record_payload(run_dir, records, index)
+        return record_payload(run_dir, records, index, failed_dir)
 
     @app.get("/api/runs/{run_name}/image/{index}")
     async def api_image(run_name: str, index: int) -> Response:
@@ -424,7 +455,7 @@ def build_app(output_dir: Path) -> FastAPI:
         records = load_run_records(run_dir)
         if index < 0 or index >= len(records):
             raise HTTPException(status_code=404, detail="Registro fuera de rango.")
-        image_path = resolve_image_path(run_dir, records[index])
+        image_path = resolve_image_path(run_dir, records[index], failed_dir)
         if image_path is None or not image_path.exists():
             raise HTTPException(status_code=404, detail="No se encontro la imagen del registro.")
         media_type = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
@@ -440,7 +471,7 @@ def build_app(output_dir: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail="Registro fuera de rango.")
         apply_update_to_record(records[index], payload)
         save_run_records(run_dir, records)
-        return record_payload(run_dir, records, index)
+        return record_payload(run_dir, records, index, failed_dir)
 
     @app.post("/api/runs/{run_name}/records/{index}/apply-db")
     async def api_apply_current(run_name: str, index: int) -> Dict[str, Any]:
@@ -453,7 +484,7 @@ def build_app(output_dir: Path) -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         save_run_records(run_dir, records)
-        return record_payload(run_dir, records, index)
+        return record_payload(run_dir, records, index, failed_dir)
 
     @app.post("/api/runs/{run_name}/apply-db-reviewed")
     async def api_apply_reviewed(run_name: str) -> Dict[str, Any]:
@@ -478,9 +509,10 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.failed_dir.mkdir(parents=True, exist_ok=True)
     if find_latest_results_dir(args.output_dir) is None:
         raise SystemExit(f"No se encontraron corridas con results.json dentro de {args.output_dir}")
-    app = build_app(args.output_dir)
+    app = build_app(args.output_dir, args.failed_dir)
     uvicorn.run(app, host=args.host, port=args.port, reload=False)
 
 

@@ -61,6 +61,10 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
+Nota:
+
+- Este comando ahora instala tambien `zxing-cpp`, que mejora la lectura de codigos de barras.
+
 ## 4.1 Instalar Tesseract En Windows Opcional
 
 Si queres mejorar el OCR local en Windows, instalar Tesseract OCR:
@@ -230,19 +234,21 @@ La app web local permite:
 Comando:
 
 ```powershell
-scan-indexer-review --output-dir .\salida
+scan-indexer-review --output-dir .\salida --failed-dir .\fallados
 ```
 
 Opcionalmente se puede cambiar host o puerto:
 
 ```powershell
-scan-indexer-review --output-dir .\salida --host 127.0.0.1 --port 8765
+scan-indexer-review --output-dir .\salida --failed-dir .\fallados --host 127.0.0.1 --port 8765
 ```
 
 Significado:
 
 - `--output-dir`
   Carpeta raiz donde estan las corridas para revisar.
+- `--failed-dir`
+  Carpeta de fallados donde tambien busca imagenes si no estan dentro de la corrida.
 - `--host`
   Direccion local donde escucha la app web.
 - `--port`

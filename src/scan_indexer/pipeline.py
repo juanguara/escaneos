@@ -28,6 +28,11 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+try:
+    import zxingcpp
+except ImportError:  # pragma: no cover - optional dependency
+    zxingcpp = None
+
 
 LOGGER = logging.getLogger("scan_indexer")
 console = Console()
@@ -398,8 +403,25 @@ def decode_barcodes(image: Image.Image) -> List[str]:
     for region in search_regions:
         for variant in barcode_variants(region):
             decode_with_opencv(detector, variant, values)
+            decode_with_zxing(variant, values)
 
     return values
+
+
+def decode_with_zxing(image_bgr: np.ndarray, values: List[str]) -> None:
+    if zxingcpp is None:
+        return
+
+    try:
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        results = zxingcpp.read_barcodes(image_rgb)
+        for result in results:
+            text = getattr(result, "text", "")
+            normalized = normalize_barcode_text(text)
+            if normalized and normalized not in values:
+                values.append(normalized)
+    except Exception as exc:  # pragma: no cover - optional backend
+        LOGGER.debug("ZXing no pudo resolver barcodes en una variante: %s", exc)
 
 
 def find_expected_barcodes(image: Image.Image) -> Tuple[Optional[str], Optional[str], List[str]]:

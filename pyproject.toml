@@ -16,6 +16,7 @@ dependencies = [
   "python-dotenv>=1.0.1",
   "pydantic>=2.10.6",
   "rich>=14.0.0",
+  "zxing-cpp>=2.2.0",
 ]
 
 [project.scripts]
