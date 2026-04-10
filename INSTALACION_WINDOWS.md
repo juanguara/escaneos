@@ -7,6 +7,7 @@
 - Acceso a internet para instalar dependencias
 - Una API key de OpenAI si se quiere usar IA
 - Credenciales de PostgreSQL si se quiere validar o impactar en base
+- Opcional: Tesseract OCR para mejorar OCR local en Windows
 
 ## 1. Instalar Python
 
@@ -60,6 +61,22 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
+## 4.1 Instalar Tesseract En Windows Opcional
+
+Si queres mejorar el OCR local en Windows, instalar Tesseract OCR:
+
+1. Descargar desde:
+   https://github.com/UB-Mannheim/tesseract/wiki
+2. Instalarlo normalmente.
+3. Durante la instalacion, dejar habilitada la opcion para agregarlo al `PATH` si aparece.
+4. Cerrar y volver a abrir la terminal.
+
+Para verificar:
+
+```powershell
+tesseract --version
+```
+
 ## 5. Configurar `.env`
 
 1. En la raiz del proyecto, crear un archivo llamado `.env`
@@ -78,6 +95,8 @@ Notas:
 
 - Si no se quiere usar IA, la app puede correr sin `OPENAI_API_KEY`, pero los campos manuscritos pueden quedar vacios o incompletos.
 - Si no se quiere validar o actualizar la base, se puede omitir la password de PostgreSQL.
+- En Windows, si `tesseract` esta instalado, la app lo usa como OCR local auxiliar.
+- Si `tesseract` no esta instalado, la app igualmente funciona y sigue con el resto del pipeline sin romperse.
 
 ## 6. Preparar Carpetas
 

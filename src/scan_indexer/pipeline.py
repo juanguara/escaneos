@@ -497,9 +497,22 @@ def dedupe_preserve_order(values: Sequence[str]) -> List[str]:
 
 
 def ocr_image_text(image: Image.Image) -> str:
+    tesseract_text = ocr_image_text_with_tesseract(image)
+    if tesseract_text:
+        return tesseract_text
+
+    if os.name == "nt":
+        LOGGER.debug("No se encontro Tesseract OCR en Windows.")
+        return ""
+
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "ocr_text.swift"
     if not script_path.exists():
         LOGGER.debug("No existe script OCR local en %s", script_path)
+        return ""
+
+    swift_path = shutil.which("swift") or "/usr/bin/swift"
+    if not Path(swift_path).exists():
+        LOGGER.debug("No se encontro ejecutable swift para OCR local.")
         return ""
 
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
@@ -508,13 +521,37 @@ def ocr_image_text(image: Image.Image) -> str:
     try:
         image.save(temp_path, format="JPEG", quality=95)
         completed = subprocess.run(
-            ["/usr/bin/swift", str(script_path), str(temp_path)],
+            [swift_path, str(script_path), str(temp_path)],
             check=False,
             capture_output=True,
             text=True,
         )
         if completed.returncode != 0:
             LOGGER.debug("OCR local falló: %s", completed.stderr.strip())
+            return ""
+        return completed.stdout.strip()
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def ocr_image_text_with_tesseract(image: Image.Image) -> str:
+    tesseract_path = shutil.which("tesseract")
+    if not tesseract_path:
+        return ""
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+        temp_path = Path(temp_file.name)
+
+    try:
+        image.save(temp_path, format="PNG")
+        completed = subprocess.run(
+            [tesseract_path, str(temp_path), "stdout", "--psm", "6"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            LOGGER.debug("Tesseract OCR fallo: %s", completed.stderr.strip())
             return ""
         return completed.stdout.strip()
     finally:
